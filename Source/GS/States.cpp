@@ -1,21 +1,30 @@
 #include "States.h"
-#include <fstream>
+
+#ifdef __linux__
+	#include <iostream>
+#else
+	#include <fstream>
+#endif
 
 using namespace std;
 
 State * makeState(char op, State * left, State * right){
-    State * res;
-    switch (op){
-        case ',': res = new StateConc(left, right); break;
-        case ';': res = new StateUnion(left, right); break;
-        case '#': res = new StateIter(left, right); break;
-        default: 
-			ofstream outp("ERROR_LOG.txt");
+	State * res;
+	switch (op){
+		case ',': res = new StateConc(left, right); break;
+		case ';': res = new StateUnion(left, right); break;
+		case '#': res = new StateIter(left, right); break;
+		default: 
+			#ifdef __linux__
+				auto & outp = cerr;
+			#else
+				ofstream outp("ERROR_LOG.txt");
+			#endif
 			outp << "unknown operation: " << op << '\n';
 			outp.flush(); 
 			exit(0);
-    }
-    return res;
+	}
+	return res;
 }
 
 int priority(char op){

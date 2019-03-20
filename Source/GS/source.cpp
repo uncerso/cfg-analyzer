@@ -1,5 +1,4 @@
 #include <iostream>
-#include <fstream>
 #include <iomanip>
 #include <string>
 #include <stack>
@@ -11,13 +10,20 @@
 #include <filesystem>
 #include "States.h"
 
+#ifndef __linux__
+	#include <fstream>
+#endif
 
 using namespace std;
 
 template<class ...Args>
 void check(bool value, Args const & ... msg) {
 	if (!value) {
-		ofstream outp("ERROR_LOG.txt");
+		#ifdef __linux__
+			auto & outp = cerr;
+		#else
+			ofstream outp("ERROR_LOG.txt");
+		#endif
 		(outp<< ... << msg);
 		outp.flush();
 		exit(0);
@@ -98,18 +104,19 @@ list<string> link(unordered_map<string, int> &declaredFuncs, vector<string> cons
 	return res;
 }
 
-string readGram(istream & inp) {
+string readGram(istream & inp){
 	stringstream ss;
 	char c = inp.get();
-	while (c == ' ')
+	while(c == ' ' || c == '\n' || c == '\r' || c == '\t') 
 		c = inp.get();
-
+	
 	if (c != ':' && c != '.')
 		ss << c;
 
 	c = inp.get();
-	while (c != '.') {
-		ss << c;
+	while(c != '.') {
+		if (c != ' ' && c != '\n' && c != '\r' && c != '\t')
+			ss << c;
 		check(!inp.eof(), "Missed . in the rules.\n");
 		c = inp.get();
 	}
@@ -117,6 +124,9 @@ string readGram(istream & inp) {
 }
 
 int main(int argc, char * argv[]) {
+#ifdef __linux__
+	auto & inp = cin;
+#else
 	cout << "Enter file name: ";
 	cout.flush();
 	string name;
@@ -128,6 +138,7 @@ int main(int argc, char * argv[]) {
 		cin >> name;
 		inp.open(name);
 	}
+#endif
 
 	int n;
 	inp >> n;
@@ -147,6 +158,10 @@ int main(int argc, char * argv[]) {
 	auto program = link(declaredFuncs, names, objs);
 	for (auto x : objs) delete x;
 
+
+#ifdef __linux__
+	auto & outp = cout;
+#else
 	filesystem::path p(filesystem::current_path());
 
 	string ext;
@@ -158,7 +173,7 @@ int main(int argc, char * argv[]) {
 	int fileNum = 0;
 	while (filesystem::exists(p / (name + to_string(fileNum) + ext))) ++fileNum;
 	ofstream outp(name + to_string(fileNum) + ext);
-
+#endif
 
 	int pos = 0, cnt = 0, corruptedSpace = 0;
 	constexpr auto intend = 8;

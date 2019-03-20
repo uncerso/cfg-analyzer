@@ -1,11 +1,14 @@
 #include <iostream>
 #include <string>
-#include <fstream>
 #include <vector>
 #include <list>
 #include <variant>
 #include <unordered_map>
 #include <filesystem>
+
+#ifndef __linux__
+	#include <fstream>
+#endif
 
 using namespace std; 
 using StrOrInt = variant<string, int>;
@@ -13,7 +16,11 @@ using StrOrInt = variant<string, int>;
 template<class ...Args>
 void check(bool value, Args const & ... msg) {
 	if (!value) {
-		ofstream outp("ERROR_LOG.txt");
+		#ifdef __linux__
+			auto & outp = cerr;
+		#else
+			ofstream outp("ERROR_LOG.txt");
+		#endif
 		(outp << ... << msg);
 		outp.flush();
 		exit(0);
@@ -36,42 +43,43 @@ inline string strTail(string const & s){
 	return s.substr(1, s.size() - 1);
 }
 
-string getNextState(vector<StrOrInt> const & data, unordered_map<int, string> const & namesOfrules, int pos, int recursionLever = 100){
+string getNextState(vector<StrOrInt> const & data, unordered_map<int, string> const & namesOfRules, int pos, int recursionLever = 100){
 	check(recursionLever > 0, "recursion in rules detected\n");
-	static unordered_map<int, string> cache;
+	while(get<string>(data[pos]) == "&" || get<string>(data[pos])[0] == '$')
+		++pos;
+	
 	auto const & s = get<string>(data[pos]);
 	if (isTerminal(s)) return s + '-' + to_string(pos);
-	if (auto it = cache.find(pos); it != cache.end()) return it->second;
-	//cerr << cache.size() << '\n';
 	if (isEndOfRule(s)) return "F["s + strTail(s)+']';
 	if (s == "*") 
 		return 	"({"s + 
-				getNextState(data, namesOfrules, get<int>(data[pos + 1]), recursionLever - 1) + 
+				getNextState(data, namesOfRules, get<int>(data[pos + 1]), recursionLever - 1) + 
 				"}, S["s + 
-				namesOfrules.find(get<int>(data[pos + 1]))->second +
+				namesOfRules.find(get<int>(data[pos + 1]))->second +
 				'-' + to_string(pos) +
 				"])";
 	if (s == "<") 
-		return 	cache[pos] = getNextState(data, namesOfrules, pos + 2, recursionLever) + 
+		return 	getNextState(data, namesOfRules, pos + 2, recursionLever) + 
 				", " +
-			 	getNextState(data, namesOfrules, get<int>(data[pos + 1]), recursionLever);
+			 	getNextState(data, namesOfRules, get<int>(data[pos + 1]), recursionLever);
 	if (s == "goto")
-		return 	getNextState(data, namesOfrules, get<int>(data[pos + 1]), recursionLever);
+		return 	getNextState(data, namesOfRules, get<int>(data[pos + 1]), recursionLever);
 	return "~!~";
 }
 
-list<string> solve(vector<StrOrInt> const & data, unordered_map<int, string> const & namesOfrules){
-	list<string> ans = {"SE["s + namesOfrules.find(0)->second+ "] = {"s + getNextState(data, namesOfrules, 0) + '}'};
+list<string> solve(vector<StrOrInt> const & data, unordered_map<int, string> const & namesOfRules){
+	list<string> ans = {"SE["s + namesOfRules.find(0)->second+ "] = {"s + getNextState(data, namesOfRules, 0) + '}'};
 	
 	for (int pos = 0; pos < data.size(); ++pos){
 		auto ps = get_if<string>(&data[pos]);
 		if (ps == nullptr) continue;
 		auto const & s = *ps;
+		if (s == "&" || s[0] == '$') continue;
 		if (isTerminal(s))
-			ans.push_back("S["s + s + '-' + to_string(pos) + "] = {" + getNextState(data, namesOfrules, pos + 1) + '}');
+			ans.push_back("S["s + s + '-' + to_string(pos) + "] = {" + getNextState(data, namesOfRules, pos + 1) + '}');
 		else if (s == "*") {
-			auto && tmp = namesOfrules.find(get<int>(data[pos + 1]))->second; 
-			ans.push_back("S["s + move(tmp) + '-' + to_string(pos) + "] = {" + getNextState(data, namesOfrules, (pos + 1) + 1) + '}');
+			auto && tmp = namesOfRules.find(get<int>(data[pos + 1]))->second; 
+			ans.push_back("S["s + move(tmp) + '-' + to_string(pos) + "] = {" + getNextState(data, namesOfRules, (pos + 1) + 1) + '}');
 		}
 	}
 
@@ -79,6 +87,9 @@ list<string> solve(vector<StrOrInt> const & data, unordered_map<int, string> con
 }
 
 int main(int argc, char * argv[]){
+#ifdef __linux__
+	auto & inp = cin;
+#else
 	cout << "Enter file name: ";
 	cout.flush();
 	string name;
@@ -90,7 +101,7 @@ int main(int argc, char * argv[]){
 		cin >> name;
 		inp.open(name);
 	}
-
+#endif
 
 	vector<StrOrInt> data;
 	string tmp;
@@ -103,7 +114,7 @@ int main(int argc, char * argv[]){
 		++cnt;
 	}
 
-	check(!data.empty() && isEndOfRule(get<string>(data.back())), "incorect input\n");
+	check(!data.empty() && isEndOfRule(get<string>(data.back())), "incorrect input\n");
 
 	try{
 		bool nextValueShouldBeInt = false;
@@ -118,19 +129,22 @@ int main(int argc, char * argv[]){
 			}
 		}
 	} 
-	catch(std::invalid_argument & err) {check(false, "incorect input\n");}
+	catch(std::invalid_argument & err) {check(false, "incorrect input\n");}
 	catch(std::out_of_range & err) {check(false, "too big int\n");}
 
-	unordered_map<int, string> namesOfrules; // start index of rule -> name of rule
+	unordered_map<int, string> namesOfRules; // start index of rule -> name of rule
 	int startIndexOfRule = 0;
 	for (int pos = 1; pos < data.size(); ++pos){
 		auto s = get_if<string>(&data[pos]);
 		if (s && isEndOfRule(*s)){
-			namesOfrules.emplace(startIndexOfRule, strTail(*s));
+			namesOfRules.emplace(startIndexOfRule, strTail(*s));
 			startIndexOfRule = pos + 1;
 		}
 	}
 
+#ifdef __linux__
+	auto & outp = cout;
+#else
 	filesystem::path p(filesystem::current_path());
 
 	string ext;
@@ -142,8 +156,9 @@ int main(int argc, char * argv[]){
 	int fileNum = 0;
 	while (filesystem::exists(p / (name + to_string(fileNum) + ext))) ++fileNum;
 	ofstream outp(name + to_string(fileNum) + ext);
+#endif
 
-	for (auto && x : solve(data, namesOfrules))
+	for (auto && x : solve(data, namesOfRules))
 		outp << x << '\n';
 	return 0;
 }

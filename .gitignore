@@ -36,3 +36,4 @@
 **/Release/*
 **/Debug/*
 **/.vs/*
+Builds/LinuxMakefile/Build/*
